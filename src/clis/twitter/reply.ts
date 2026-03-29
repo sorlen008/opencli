@@ -19,7 +19,7 @@ cli({
 
     // 1. Navigate to the tweet page
     await page.goto(kwargs.url);
-    await page.wait({ selector: '[data-testid="primaryColumn"]' });
+    await page.wait({ selector: '[data-testid="AppTabBar_Home_Link"]' });
 
     // 2. Automate typing the reply and clicking reply
     const result = await page.evaluate(`(async () => {

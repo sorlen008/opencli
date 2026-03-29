@@ -17,7 +17,7 @@ cli({
     if (!page) throw new CommandExecutionError('Browser session required for twitter hide-reply');
 
     await page.goto(kwargs.url);
-    await page.wait({ selector: '[data-testid="primaryColumn"]' });
+    await page.wait({ selector: '[data-testid="AppTabBar_Home_Link"]' });
 
     const result = await page.evaluate(`(async () => {
         try {

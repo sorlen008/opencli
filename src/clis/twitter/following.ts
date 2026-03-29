@@ -19,7 +19,7 @@ cli({
     // If no user is specified, figure out the logged-in user's handle
     if (!targetUser) {
         await page.goto('https://x.com/home');
-        await page.wait({ selector: '[data-testid="primaryColumn"]' });
+        await page.wait({ selector: '[data-testid="AppTabBar_Home_Link"]' });
 
         const href = await page.evaluate(`() => {
             const link = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]');
