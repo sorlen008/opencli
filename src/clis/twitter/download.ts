@@ -111,6 +111,7 @@ cli({
       subdir,
       cookies: formatCookieHeader(browserCookies),
       browserCookies,
+      headers: { Referer: 'https://x.com/' },
       filenamePrefix: username || 'tweet',
       ytdlpExtraArgs: ['--merge-output-format', 'mp4'],
     });

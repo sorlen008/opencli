@@ -85,6 +85,7 @@ export async function httpDownload(
   destPath: string,
   options: DownloadOptions = {},
   redirectCount = 0,
+  retryCount = 0,
 ): Promise<{ success: boolean; size: number; error?: string }> {
   const { cookies, headers = {}, timeout = 30000, onProgress, maxRedirects = 10 } = options;
 
@@ -186,7 +187,13 @@ export async function httpDownload(
       } catch (err) {
         clearTimeout(timer);
         await cleanupTempFile();
-        finish({ success: false, size: 0, error: err instanceof Error ? err.message : String(err) });
+        const msg = err instanceof Error ? err.message : String(err);
+        if (retryCount < 2 && /ECONNRESET|ETIMEDOUT|ECONNREFUSED/.test(msg)) {
+          await new Promise<void>(r => setTimeout(r, 500 * (retryCount + 1)));
+          finish(await httpDownload(url, destPath, options, redirectCount, retryCount + 1));
+          return;
+        }
+        finish({ success: false, size: 0, error: msg });
       }
     })();
   });

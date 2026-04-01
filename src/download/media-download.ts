@@ -47,6 +47,8 @@ export interface MediaDownloadOptions {
   ytdlpExtraArgs?: string[];
   /** Whether to show progress (default: true) */
   verbose?: boolean;
+  /** Extra HTTP headers forwarded to httpDownload (e.g. Referer) */
+  headers?: Record<string, string>;
 }
 
 export interface MediaDownloadResult {
@@ -83,6 +85,7 @@ export async function downloadMedia(
     filenamePrefix = 'download',
     ytdlpExtraArgs = [],
     verbose = true,
+    headers,
   } = options;
 
   if (!items || items.length === 0) {
@@ -136,6 +139,7 @@ export async function downloadMedia(
           const dlTimeout = timeout || (isVideo ? 60000 : 30000);
           result = await httpDownload(media.url, destPath, {
             cookies,
+            headers,
             timeout: dlTimeout,
             onProgress: (received, total) => {
               if (progressBar) progressBar.update(received, total);
