@@ -601,11 +601,34 @@ function postInstallLifecycle(pluginDir: string): void {
 }
 
 /**
+ * Returns true if the monorepo root has npm workspaces configured.
+ * When workspaces are present, `npm install` at the root resolves all
+ * sub-package dependencies automatically; no per-sub-package install needed.
+ */
+function hasNpmWorkspaces(repoDir: string): boolean {
+  const pkgPath = path.join(repoDir, 'package.json');
+  if (!fs.existsSync(pkgPath)) return false;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { workspaces?: unknown };
+    return Array.isArray(pkg.workspaces) && pkg.workspaces.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Monorepo lifecycle: install shared deps once at repo root, then finalize each sub-plugin.
+ * If the monorepo root does NOT declare npm workspaces, also run `npm install` in each
+ * sub-plugin that has its own package.json — otherwise runtime deps listed only in the
+ * sub-package (e.g. `undici`) are never installed (fixes #722).
  */
 function postInstallMonorepoLifecycle(repoDir: string, pluginDirs: string[]): void {
   installDependencies(repoDir);
+  const useWorkspaces = hasNpmWorkspaces(repoDir);
   for (const pluginDir of pluginDirs) {
+    if (!useWorkspaces) {
+      installDependencies(pluginDir);
+    }
     finalizePluginRuntime(pluginDir);
   }
 }

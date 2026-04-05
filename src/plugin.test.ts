@@ -603,11 +603,6 @@ describe('postInstallMonorepoLifecycle', () => {
     repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencli-monorepo-'));
     subDir = path.join(repoDir, 'packages', 'alpha');
     fs.mkdirSync(subDir, { recursive: true });
-    fs.writeFileSync(path.join(repoDir, 'package.json'), JSON.stringify({
-      name: 'opencli-plugins',
-      private: true,
-      workspaces: ['packages/*'],
-    }));
     fs.writeFileSync(path.join(subDir, 'hello.yaml'), 'site: test\nname: hello\n');
   });
 
@@ -615,7 +610,13 @@ describe('postInstallMonorepoLifecycle', () => {
     fs.rmSync(repoDir, { recursive: true, force: true });
   });
 
-  it('installs dependencies once at the monorepo root, not in each sub-plugin', () => {
+  it('with workspaces: installs dependencies once at the monorepo root, not in each sub-plugin', () => {
+    fs.writeFileSync(path.join(repoDir, 'package.json'), JSON.stringify({
+      name: 'opencli-plugins',
+      private: true,
+      workspaces: ['packages/*'],
+    }));
+
     _postInstallMonorepoLifecycle(repoDir, [subDir]);
 
     const npmCalls = mockExecFileSync.mock.calls.filter(
@@ -625,6 +626,46 @@ describe('postInstallMonorepoLifecycle', () => {
     expect(npmCalls).toHaveLength(1);
     expect(npmCalls[0][2]).toMatchObject({ cwd: repoDir });
     expect(npmCalls.some(([, , opts]) => opts?.cwd === subDir)).toBe(false);
+  });
+
+  it('without workspaces: also installs dependencies in sub-plugins that have package.json', () => {
+    // Root has no workspaces — sub-package deps must be installed per-directory (#722)
+    fs.writeFileSync(path.join(repoDir, 'package.json'), JSON.stringify({
+      name: 'opencli-plugins',
+      private: true,
+    }));
+    fs.writeFileSync(path.join(subDir, 'package.json'), JSON.stringify({
+      name: 'codehub',
+      type: 'module',
+      dependencies: { undici: '^7.0.0' },
+    }));
+
+    _postInstallMonorepoLifecycle(repoDir, [subDir]);
+
+    const npmCalls = mockExecFileSync.mock.calls.filter(
+      ([cmd, args]) => cmd === 'npm' && Array.isArray(args) && args[0] === 'install',
+    );
+
+    expect(npmCalls).toHaveLength(2);
+    expect(npmCalls[0][2]).toMatchObject({ cwd: repoDir });
+    expect(npmCalls[1][2]).toMatchObject({ cwd: subDir });
+  });
+
+  it('without workspaces: skips sub-plugin npm install when sub-plugin has no package.json', () => {
+    fs.writeFileSync(path.join(repoDir, 'package.json'), JSON.stringify({
+      name: 'opencli-plugins',
+      private: true,
+    }));
+    // subDir has no package.json — installDependencies is a no-op
+
+    _postInstallMonorepoLifecycle(repoDir, [subDir]);
+
+    const npmCalls = mockExecFileSync.mock.calls.filter(
+      ([cmd, args]) => cmd === 'npm' && Array.isArray(args) && args[0] === 'install',
+    );
+
+    expect(npmCalls).toHaveLength(1);
+    expect(npmCalls[0][2]).toMatchObject({ cwd: repoDir });
   });
 });
 
