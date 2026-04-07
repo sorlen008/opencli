@@ -2,6 +2,18 @@ import { CommandExecutionError } from '../../errors.js';
 import { cli, Strategy } from '../../registry.js';
 import type { IPage } from '../../types.js';
 
+function buildReplyComposerUrl(tweetUrl: string): string {
+  let pathname = '';
+  try {
+    pathname = new URL(tweetUrl).pathname;
+  } catch {
+    throw new Error(`Invalid tweet URL: ${tweetUrl}`);
+  }
+  const match = pathname.match(/\/status\/(\d+)/);
+  if (!match?.[1]) throw new Error(`Could not extract tweet ID from URL: ${tweetUrl}`);
+  return `https://x.com/compose/post?in_reply_to=${match[1]}`;
+}
+
 cli({
   site: 'twitter',
   name: 'reply',
@@ -17,34 +29,42 @@ cli({
   func: async (page: IPage | null, kwargs: any) => {
     if (!page) throw new CommandExecutionError('Browser session required for twitter reply');
 
-    // 1. Navigate to the tweet page
-    await page.goto(kwargs.url);
-    await page.wait(5); // Wait for the react application to hydrate
+    // Navigate directly to the dedicated reply composer so the textarea is
+    // reliably present. The inline reply on the tweet page loads after
+    // primaryColumn and races with SPA hydration, causing intermittent failures.
+    await page.goto(buildReplyComposerUrl(kwargs.url), { waitUntil: 'load', settleMs: 2500 });
+    await page.wait({ selector: '[data-testid="tweetTextarea_0"]' });
 
-    // 2. Automate typing the reply and clicking reply
     const result = await page.evaluate(`(async () => {
         try {
-            // Find the reply text area on the tweet page. 
-            // The placeholder is usually "Post your reply"
-            const box = document.querySelector('[data-testid="tweetTextarea_0"]');
-            if (box) {
-                box.focus();
-                document.execCommand('insertText', false, ${JSON.stringify(kwargs.text)});
-            } else {
+            const visible = (el) => !!el && (el.offsetParent !== null || el.getClientRects().length > 0);
+            const boxes = Array.from(document.querySelectorAll('[data-testid="tweetTextarea_0"]'));
+            const box = boxes.find(visible) || boxes[0];
+            if (!box) {
                 return { ok: false, message: 'Could not find the reply text area. Are you logged in?' };
             }
-            
-            // Wait for React state to register the input and enable the button
+
+            box.focus();
+            const textToInsert = ${JSON.stringify(kwargs.text)};
+            const dataTransfer = new DataTransfer();
+            dataTransfer.setData('text/plain', textToInsert);
+            box.dispatchEvent(new ClipboardEvent('paste', {
+                clipboardData: dataTransfer,
+                bubbles: true,
+                cancelable: true
+            }));
+
             await new Promise(r => setTimeout(r, 1000));
-            
-            // Find the Reply button. It usually shares the same test id tweetButtonInline in this context
-            const btn = document.querySelector('[data-testid="tweetButtonInline"]');
-            if (btn && !btn.disabled) {
-                btn.click();
-                return { ok: true, message: 'Reply posted successfully.' };
-            } else {
+
+            const buttons = Array.from(
+                document.querySelectorAll('[data-testid="tweetButton"], [data-testid="tweetButtonInline"]')
+            );
+            const btn = buttons.find((el) => visible(el) && !el.disabled);
+            if (!btn) {
                 return { ok: false, message: 'Reply button is disabled or not found.' };
             }
+            btn.click();
+            return { ok: true, message: 'Reply posted successfully.' };
         } catch (e) {
             return { ok: false, message: e.toString() };
         }
@@ -61,3 +81,5 @@ cli({
     }];
   }
 });
+
+export const __test__ = { buildReplyComposerUrl };
